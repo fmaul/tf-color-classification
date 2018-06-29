@@ -1,16 +1,12 @@
+tf.setBackend('webgl');
+
 // Generate some random colors for visualization of predictions
 let testData = [];
 for (let i = 0; i < 100; i++) {
-    testData.push({
-        r: Math.random(),
-        g: Math.random(),
-        b: Math.random()
-    });
+    testData.push({ r: Math.random(), g: Math.random(), b: Math.random() });
 }
 
-tf.setBackend('webgl');
-
-// Get color definition training data from gist
+// Get color definition training data from github
 fetch('https://raw.githubusercontent.com/fmaul/tf-color-classification/master/colors.json').then(result => {
     return result.json();
 }).then(data => {
@@ -18,17 +14,7 @@ fetch('https://raw.githubusercontent.com/fmaul/tf-color-classification/master/co
 });
 
 function buildModel(data) {
-    // create Index of all labels
-    let labels = [];
-    data.forEach(d => {
-        let i = labels.findIndex((e => e == d.color));
-        if (i >= 0) d.labelIdx = i;
-        else {
-            d.labelIdx = labels.length;
-            labels.push(d.color);
-        }
-    });
-    console.log(labels);
+    let labels = buildIndexOfAllLabels(data);
 
     let xs = tf.tidy(() => tf.tensor2d(data.map(d => [d.r / 255, d.g / 255, d.b / 255])));
     let ys = tf.tidy(() => tf.oneHot(tf.tensor1d(data.map(d => d.labelIdx), 'int32'), labels.length).toFloat());
@@ -38,22 +24,20 @@ function buildModel(data) {
     console.log("Output: " + ys.shape);
     ys.print();
 
-    const input = tf.input({
+    const inputLayer = tf.input({
         shape: [3]
     });
-
-    const denseLayer1 = tf.layers.dense({
-        units: 16,
+    const denseLayer = tf.layers.dense({
+        units: 20,
         activation: 'relu'
     });
-    const denseLayer2 = tf.layers.dense({
+    const outputLayer = tf.layers.dense({
         units: labels.length,
         activation: 'softmax'
     });
-    const output = denseLayer2.apply(denseLayer1.apply(input));
     const model = tf.model({
-        inputs: input,
-        outputs: output
+        inputs: inputLayer,
+        outputs: outputLayer.apply(denseLayer.apply(inputLayer))
     });
 
     // tf.train.sgd(0.5)
@@ -65,8 +49,22 @@ function buildModel(data) {
     train(labels, model, xs, ys, 0);
 }
 
+function buildIndexOfAllLabels(data) {
+    let labels = [];
+    data.forEach(d => {
+        let i = labels.findIndex((e => e == d.color));
+        if (i >= 0) d.labelIdx = i;
+        else {
+            d.labelIdx = labels.length;
+            labels.push(d.color);
+        }
+    });
+    console.log(labels);
+    return labels;
+}
+
 function train(labels, model, xs, ys, iteration) {
-    if (iteration > 80) return;
+    if (iteration > 100) return;
     // console.log(tf.memory().numTensors);
 
     const history = model.fit(xs, ys, {
@@ -81,7 +79,6 @@ function train(labels, model, xs, ys, iteration) {
         window.setTimeout(() => train(labels, model, xs, ys, iteration + 1), 50);
     });
 }
-
 
 function printPredictions(labels, model) {
     $("#main").empty();
@@ -107,7 +104,7 @@ function buildMaxPredictionInfo(probabilities, labels) {
         .slice(0, 3)
         .filter(e => e.v > 0.1)
         .map(e => "" + labels[e.idx] + ": " + round(e.v))
-        .map((s,i) => (i==0) ? "<b>"+s+"</b>" : s )
+        .map((s, i) => (i == 0) ? "<b>" + s + "</b>" : s)
         .join(", ");
 }
 
