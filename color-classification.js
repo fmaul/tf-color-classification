@@ -1,5 +1,3 @@
-tf.setBackend('webgl');
-
 // Generate some random colors for visualization of predictions
 let testData = [];
 for (let i = 0; i < 100; i++) {
@@ -10,43 +8,18 @@ for (let i = 0; i < 100; i++) {
 fetch('https://raw.githubusercontent.com/fmaul/tf-color-classification/master/colors.json').then(result => {
     return result.json();
 }).then(data => {
-    buildModel(data);
+    setup(data);
 });
 
-function buildModel(data) {
+function setup(data) {
     let labels = buildIndexOfAllLabels(data);
 
-    let xs = tf.tidy(() => tf.tensor2d(data.map(d => [d.r / 255, d.g / 255, d.b / 255])));
-    let ys = tf.tidy(() => tf.oneHot(tf.tensor1d(data.map(d => d.labelIdx), 'int32'), labels.length).toFloat());
+    let model = buildAndCompileClassificationModel(labels);
 
-    console.log("Input: " + xs.shape);
-    xs.print();
-    console.log("Output: " + ys.shape);
-    ys.print();
+    let xs = tf.tidy(() => tf.tensor2d(data.map(c => [c.r / 255, c.g / 255, c.b / 255])));
+    let ys = tf.tidy(() => tf.oneHot(tf.tensor1d(data.map(c => c.labelIdx), 'int32'), labels.length).toFloat());
 
-    const inputLayer = tf.input({
-        shape: [3]
-    });
-    const denseLayer = tf.layers.dense({
-        units: 20,
-        activation: 'relu'
-    });
-    const outputLayer = tf.layers.dense({
-        units: labels.length,
-        activation: 'softmax'
-    });
-    const model = tf.model({
-        inputs: inputLayer,
-        outputs: outputLayer.apply(denseLayer.apply(inputLayer))
-    });
-
-    // tf.train.sgd(0.5)
-    model.compile({
-        optimizer: 'adam',
-        loss: 'meanSquaredError'
-    });
-
-    train(labels, model, xs, ys, 0);
+    trainLoop(labels, model, xs, ys, 0);
 }
 
 function buildIndexOfAllLabels(data) {
@@ -63,20 +36,42 @@ function buildIndexOfAllLabels(data) {
     return labels;
 }
 
-function train(labels, model, xs, ys, iteration) {
+function buildAndCompileClassificationModel(labels) {
+    let inputLayer = tf.input({
+        shape: [3]
+    });
+    let denseLayer = tf.layers.dense({
+        units: labels.length * 2,
+        activation: 'relu'
+    });
+    let outputLayer = tf.layers.dense({
+        units: labels.length,
+        activation: 'softmax'
+    });
+    let model = tf.model({
+        inputs: inputLayer,
+        outputs: outputLayer.apply(denseLayer.apply(inputLayer))
+    });
+    model.compile({
+        optimizer: 'adam',
+        loss: 'meanSquaredError'
+    });
+    return model;
+}
+
+function trainLoop(labels, model, xs, ys, iteration) {
     if (iteration > 100) return;
-    // console.log(tf.memory().numTensors);
 
     const history = model.fit(xs, ys, {
         shuffle: true,
         epochs: 10,
-        batchSize: 300
+        batchSize: 100
     });
 
     history.then(h => {
         $("#header").text("Iteration " + iteration + " Loss: " + h.history.loss[0]);
         printPredictions(labels, model);
-        window.setTimeout(() => train(labels, model, xs, ys, iteration + 1), 50);
+        window.setTimeout(() => trainLoop(labels, model, xs, ys, iteration + 1), 10);
     });
 }
 
@@ -97,17 +92,17 @@ function printPredictions(labels, model) {
 
     });
 }
-
+/* argMax with max 3 results, threshold 0.1 and formating */
 function buildMaxPredictionInfo(probabilities, labels) {
-    return probabilities.map((v, idx) => { return { idx, v } })
+    return probabilities.map((v, idx) => ({ idx, v }))
         .sort((a, b) => a.v < b.v)
         .slice(0, 3)
         .filter(e => e.v > 0.1)
-        .map(e => "" + labels[e.idx] + ": " + round(e.v))
+        .map(e => "" + labels[e.idx] + ": " + round3(e.v))
         .map((s, i) => (i == 0) ? "<b>" + s + "</b>" : s)
         .join(", ");
 }
 
-function round(v) {
+function round3(v) {
     return Math.round(v * 1000) / 1000;
 }
