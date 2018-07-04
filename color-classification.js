@@ -48,7 +48,7 @@ function buildAndCompileClassificationModel(labels) {
     }));
     model.compile({
         optimizer: 'adam',
-        loss: 'meanSquaredError'
+        loss: 'meanSquaredError' // tf.losses.softmaxCrossEntropy
     });
     return model;
 }
@@ -73,8 +73,7 @@ function printPredictions(labels, model) {
         let prediction = model.predict(tf.tensor2d(validationData.map(td => [td.r, td.g, td.b])));
 
         validationData.forEach((td, i) => {
-            // get the prediction for test color i as normal Array
-            let probabilities = tf.slice(prediction, i, 1).dataSync();
+            let probabilities = tf.slice(prediction, i, 1).dataSync(); // TypedArray
             let info = buildMaxPredictionInfo(probabilities, labels);
             let color = "rgb(" + Math.floor(td.r * 255) + "," + Math.floor(td.g * 255) + "," + Math.floor(td.b * 255) + ")";
             $("#main").append("<div style=\"background:" + color + "\">" + info + "</div>");
